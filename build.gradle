@@ -1,0 +1,156 @@
+apply plugin: 'scala'
+apply plugin: 'maven'
+apply plugin: 'eclipse'
+apply plugin: 'provided-base'
+apply plugin: 'application'
+
+apply from: 'gradle.properties'
+
+buildscript {
+  repositories {
+    jcenter()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath(group: 'com.netflix.nebula', name: 'gradle-extra-configurations-plugin', version: '1.12.3')
+    classpath(group: 'org.jfrog.buildinfo', name: 'build-info-extractor-gradle', version: '3.0.1')
+    classpath(group: 'com.github.jengelman.gradle.plugins', name: 'shadow', version: '1.2.2')
+  }
+}
+
+configurations {
+  provided {
+    dependencies.all { dep ->
+      configurations.runtime.exclude group: dep.group, module: dep.name
+    }
+  }
+  compile.extendsFrom provided
+
+  // exclusions
+  compile.exclude group: 'org.slf4j',           module: 'slf4j-log4j12'
+  compile.exclude group: 'org.slf4j',           module: 'slf4j-log4j11'
+  compile.exclude group: 'org.slf4j',           module: 'slf4j-jdk14'
+
+  testCompile.exclude group: 'org.slf4j',       module: 'slf4j-log4j12'
+  testCompile.exclude group: 'org.slf4j',       module: 'slf4j-log4j11'
+  testCompile.exclude group: 'org.slf4j',       module: 'slf4j-jdk14'
+
+  // integTestCompile.extendsFrom testRuntime
+}
+
+allprojects {
+  apply plugin: 'scala'
+  apply plugin: 'maven'
+  apply plugin: 'eclipse'
+  apply plugin: 'provided-base'
+  apply plugin: 'application'
+
+  defaultTasks 'dist'
+
+  eclipse {
+    jdt {
+      sourceCompatibility = 1.8
+      targetCompatibility = 1.8
+    }
+  }
+
+  apply plugin: 'java'
+  apply plugin: 'com.github.johnrengelman.shadow'
+  apply plugin: 'com.jfrog.artifactory'
+
+  tasks.withType(ScalaCompile) {
+    // Use incremental compilation
+    scalaCompileOptions.useAnt = false
+    // Enable Scala warnings output
+    scalaCompileOptions.additionalParameters = ["-feature"]
+  }
+
+  mainClassName = "com.inalyse.axelrod.Launcher"
+  shadowJar {
+    mergeServiceFiles {
+      include 'reference.conf'
+    }
+    archiveName = project.name +'.'+'jar'
+    zip64 true
+  }
+
+  task go(dependsOn: ['compileJava', 'compileScala', 'build'], type: JavaExec) {
+    description = 'Start up ' + project.name
+
+    classpath(sourceSets.main.runtimeClasspath, configurations.compile)
+
+    systemProperties = System.getProperties()
+    standardInput = System.in
+    if(System.getProperty('main')!=null) main = System.getProperty('main') else main = 'com.inalyse.axelrod.Launcher'
+
+    jvmArgs+=['-Djava.library.path='+System.getProperty('java.library.path')]
+    jvmArgs+=['-Xmx4g']
+    jvmArgs+=['-Xms4g']
+
+  }
+
+  task dist(dependsOn: ['compileJava', 'compileScala', 'shadowJar'], type: Tar) {
+    def buildName=project.name
+    
+    from(shadowJar.outputs.files) {
+      into buildName
+    }
+
+    from('.') {
+      include 'README.md'
+      into buildName
+    }
+
+    archiveName = buildName+'.'+'tgz'
+    compression = Compression.GZIP
+  }
+
+  sourceSets {
+    main {
+      java {
+        srcDir 'src/main/java'
+      }
+      scala {
+        srcDir 'src/main/scala'
+      }
+      resources {
+        srcDir 'src/main/resources'
+      }
+    }
+
+    test {
+      java {
+        srcDir 'src/test/java'
+      }
+      scala {
+        srcDir 'src/test/scala'
+      }
+      resources {
+        srcDir 'src/test/resources'
+      }
+    }
+  }
+  repositories {
+    jcenter()
+    mavenCentral()
+    maven { url "http://download.oracle.com/maven" }
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+    maven { url "http://yuriysechko.bitbucket.org" }
+    maven { url "http://jcenter.bintray.com/" }
+    maven { url "http://repo.typesafe.com/typesafe/releases/" }
+    maven { url "http://maven.twttr.com/" }
+    maven { url "http://maven.restlet.org/" }
+    maven { url "http://repo.spray.io/" }
+    maven { url "http://repo.akka.io/releases/" }
+    maven { url "https://repo.eclipse.org/content/repositories/paho-releases" }
+    maven { url "http://gradle.artifactoryonline.com/gradle/libs/" }
+    maven { url "http://conjars.org/repo" }
+    maven { url "http://hypergraphdb.org/maven" }
+  }
+}
+
+dependencies {
+  compile    project(':dep')
+}
+
